@@ -2,10 +2,11 @@
 
 Bài Lab 3 môn IoT: thiết kế mạch giám sát và cảnh báo người chạy bộ bằng **ESP32** và cảm biến **BMP180**, chạy trên nền **FreeRTOS**. Mạch đo nhiệt độ, áp suất khí quyển, tính độ cao so với mực nước biển, gửi dữ liệu qua **MQTT** lên giao diện web và cảnh báo bằng LED + còi khi có nguy cơ.
 
-## Nội dung dự án
 ## Tải xuống dự án
 
 - **Tải toàn bộ dự án (file .zip):** [Tải xuống](https://github.com/Quang-Dung-t/LAB_3_RUNNER/archive/refs/heads/main.zip)
+
+## Nội dung dự án
 
 | Thành phần | Liên kết |
 |---|---|
