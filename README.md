@@ -7,7 +7,7 @@ Bài Lab 3 môn IoT: thiết kế mạch giám sát và cảnh báo người ch�
 | Thành phần | Liên kết |
 |---|---|
 | Báo cáo | [bao_cao_lab3_QD.docx](docs/bao_cao_lab3_QD.docx) |
-| Video mô phỏng | [Xem video](demo/video_mo_phong.mp4) |
+| Video mô phỏng | [Xem video](https://quang-dung-t.github.io/LAB_3_RUNNER/demo/video_mo_phong.mp4) |
 | Mô phỏng Wokwi | [Mở trên Wokwi](https://wokwi.com/projects/480228802761296897) |
 | Giao diện web | [Mở web](https://quang-dung-t.github.io/LAB_3_RUNNER/web/) |
 
