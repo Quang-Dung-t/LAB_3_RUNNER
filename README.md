@@ -6,11 +6,7 @@ Bài Lab 3 môn IoT: thiết kế mạch giám sát và cảnh báo người ch�
 ## Tải xuống dự án
 
 - **Tải toàn bộ dự án (file .zip):** [Tải xuống](https://github.com/Quang-Dung-t/LAB_3_RUNNER/archive/refs/heads/main.zip)
-- **Hoặc dùng Git:**
 
-  ```bash
-  git clone https://github.com/Quang-Dung-t/LAB_3_RUNNER.git
-  ```
 | Thành phần | Liên kết |
 |---|---|
 | Báo cáo | [bao_cao_lab3_QD.docx](docs/bao_cao_lab3_QD.docx) |
