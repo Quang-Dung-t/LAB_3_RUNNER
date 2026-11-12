@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giám sát người chạy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root { --bg:#edf0f6; --ink:#0f1a33; --muted:#5b6785; --line:#dbe0ec; --night:#0f1a33; --alert:#e11d48; --temp:#ef6c35; --press:#4457d6;
+          --display:"Bricolage Grotesque", system-ui, sans-serif; --body:"Instrument Sans", system-ui, "Segoe UI", sans-serif; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:400 1rem/1.5 var(--body); }
+  main { max-width:1120px; margin:0 auto; padding:24px 16px 56px; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
+  h1 { margin:0; font:800 clamp(1.8rem,4vw,2.6rem)/1.05 var(--display); letter-spacing:-.025em; }
+  .sub { margin:6px 0 0; color:var(--muted); }
+  .pill { display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:999px; background:#fff; border:1px solid var(--line); font-size:.9rem; color:var(--muted); }
+  .pill::before { content:""; width:9px; height:9px; border-radius:50%; background:#b5bdd0; }
+  .pill.online { color:var(--ink); }
+  .pill.online::before { background:#17a673; box-shadow:0 0 0 4px rgba(23,166,115,.18); }
+
+  .alarm { position:sticky; top:12px; z-index:5; display:flex; align-items:center; gap:12px; margin-top:18px; padding:14px 18px; border-radius:16px; background:var(--alert); color:#fff; font-weight:600; box-shadow:0 12px 30px -10px rgba(225,29,72,.6); }
+  .alarm i { width:12px; height:12px; border-radius:50%; background:#fff; animation:beat 1s ease-in-out infinite; }
+  @keyframes beat { 50% { transform:scale(1.7); opacity:.45; } }
+
+  .board { display:grid; grid-template-columns:repeat(12,1fr); gap:16px; margin-top:18px; }
+
+  /* Hero: bình minh sau dãy núi, mặt cắt núi chính là biểu đồ độ cao */
+  .hero { grid-column:span 12; position:relative; min-height:480px; border-radius:28px; overflow:hidden; color:#fff;
+          background:radial-gradient(circle at 78% 58%, #ffe6b0 0 3%, rgba(255,184,107,.55) 9%, rgba(255,150,120,0) 30%),
+                     linear-gradient(180deg,#111a3f 0%,#2f3478 38%,#a4558a 70%,#f2a26b 100%);
+          transition:box-shadow .3s; }
+  .in-alarm .hero { box-shadow:0 0 0 4px var(--alert), 0 24px 60px -20px rgba(225,29,72,.6); }
+  .hero-top { position:relative; z-index:2; display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:28px 30px; }
+  .hero .label { color:rgba(255,255,255,.8); font-weight:500; }
+  .hero-chart { position:absolute; left:0; right:0; bottom:0; height:62%; }
+  .wait { max-width:240px; margin:0; padding:10px 14px; border-radius:12px; background:rgba(255,255,255,.16); backdrop-filter:blur(6px); font-size:.9rem; }
+  .stats { display:flex; gap:24px; }
+  .stats div { display:flex; flex-direction:column; font-size:.85rem; color:rgba(255,255,255,.75); }
+  .stats b { font:700 1.3rem var(--display); color:#fff; font-variant-numeric:tabular-nums; }
+
+  .card { background:#fff; border:1px solid var(--line); border-radius:22px; padding:22px; }
+  .temp { grid-column:span 7; } .pressure { grid-column:span 5; }
+  .label { color:var(--muted); font-weight:500; }
+  .reading { display:flex; align-items:baseline; gap:6px; margin:2px 0 12px; }
+  .value { font:800 clamp(2.6rem,5vw,3.6rem)/1 var(--display); letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+  .hero .value { font-size:clamp(3.8rem,10vw,6.4rem); text-shadow:0 2px 24px rgba(0,0,0,.25); }
+  .unit { font:500 1.15rem var(--body); color:var(--muted); }
+  .hero .unit { color:rgba(255,255,255,.85); }
+  .temp .value.hot { color:var(--alert); }
+  .chart { position:relative; height:230px; }
+  .note { margin:10px 0 0; color:var(--muted); font-size:.9rem; }
+
+  .gwrap { position:relative; max-width:340px; margin:14px auto 0; }
+  .gauge { display:block; width:100%; }
+  #arc { transition:stroke-dashoffset .5s ease; }
+  .gval { position:absolute; left:0; right:0; bottom:2px; text-align:center; }
+  .gval .value { font-size:clamp(2.2rem,4.5vw,3rem); }
+  .gscale { display:flex; justify-content:space-between; max-width:340px; margin:4px auto 0; padding:0 4px; color:var(--muted); font-size:.85rem; }
+
+  /* Dải điều khiển tối màu ở cuối trang */
+  .band { grid-column:span 12; background:var(--night); color:#fff; border-radius:28px; padding:24px; }
+  .band-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+  .band-head .label { color:rgba(255,255,255,.7); }
+  .seg { display:inline-grid; grid-template-columns:1fr 1fr; padding:4px; border-radius:12px; background:rgba(255,255,255,.1); }
+  .seg button { border:0; background:none; color:rgba(255,255,255,.75); padding:8px 18px; border-radius:9px; font:600 .95rem var(--body); cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:#fff; color:var(--ink); }
+  .togs { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
+  .tog { display:flex; align-items:center; gap:16px; padding:18px 20px; text-align:left; color:#fff; font:inherit; cursor:pointer; border-radius:20px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.06); transition:background .2s, border-color .2s; }
+  .tog b { display:block; font:700 1.15rem var(--display); }
+  .tog .state { font-size:.9rem; opacity:.75; }
+  .ico { flex:none; width:54px; height:54px; border-radius:50%; display:grid; place-items:center; background:rgba(255,255,255,.12); }
+  .tog.on { background:var(--alert); border-color:var(--alert); }
+  .tog.on .ico { background:#fff; color:var(--alert); animation:ripple 1.4s ease-out infinite; }
+  @keyframes ripple { 0% { box-shadow:0 0 0 0 rgba(255,255,255,.55); } 100% { box-shadow:0 0 0 18px rgba(255,255,255,0); } }
+  .hint { margin:14px 0 0; color:rgba(255,255,255,.6); font-size:.9rem; }
+  button:focus-visible { outline:3px solid #7aa2ff; outline-offset:2px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+
+  @media (max-width:860px) { .temp, .pressure, .band { grid-column:span 12; } .togs { grid-template-columns:1fr; } .hero-top { flex-direction:column; } }
+  @media (prefers-reduced-motion:reduce) { .alarm i, .tog.on .ico { animation:none; } #arc, .tog, .hero { transition:none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Giám sát người chạy</h1>
+      <p class="sub">Nhiệt độ, áp suất và độ cao từ ESP32, cập nhật theo thời gian thực</p>
+    </div>
+    <span id="status" class="pill">Đang kết nối broker…</span>
+  </header>
+
+  <div id="alarm" class="alarm" role="alert" hidden><i></i><span>Cảnh báo: <span id="reason"></span></span></div>
+
+  <section class="board">
+    <article class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="label">Độ cao so với mực nước biển</div>
+          <div class="reading"><span class="value" id="alt">--</span><span class="unit">m</span></div>
+        </div>
+        <p id="wait" class="wait">Chưa có dữ liệu. Hãy bấm Start trên Wokwi.</p>
+        <div id="stats" class="stats" hidden>
+          <div><span>Thấp nhất</span><b id="amin">--</b></div>
+          <div><span>Cao nhất</span><b id="amax">--</b></div>
+          <div><span>Thay đổi</span><b id="adelta">--</b></div>
+        </div>
+      </div>
+      <div class="hero-chart"><canvas id="chartAlt" aria-label="Mặt cắt độ cao theo thời gian"></canvas></div>
+    </article>
+
+    <article class="card temp">
+      <div class="label">Nhiệt độ</div>
+      <div class="reading"><span class="value" id="temp">--</span><span class="unit">°C</span></div>
+      <div class="chart"><canvas id="chartTemp" aria-label="Biểu đồ nhiệt độ theo thời gian"></canvas></div>
+      <p class="note">Đường đứt nét đỏ là ngưỡng cảnh báo 35°C. <span id="last"></span></p>
+    </article>
+
+    <article class="card pressure">
+      <div class="label">Áp suất khí quyển</div>
+      <div class="gwrap">
+        <svg class="gauge" viewBox="0 0 200 112" role="img" aria-label="Đồng hồ áp suất">
+          <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#e3e8f3" stroke-width="14" stroke-linecap="round"/>
+          <path id="arc" d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#4457d6" stroke-width="14" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3"/>
+        </svg>
+        <div class="gval"><span class="value" id="press">--</span> <span class="unit">hPa</span></div>
+      </div>
+      <div class="gscale"><span>950</span><span>1050</span></div>
+      <p class="note" style="text-align:center">Áp suất chuẩn ở mực nước biển là 1013 hPa.</p>
+    </article>
+
+    <article class="band">
+      <div class="band-head">
+        <div class="label">Điều khiển cơ cấu chấp hành</div>
+        <div class="seg" role="group" aria-label="Chế độ">
+          <button id="segAuto" aria-pressed="true" disabled>Tự động</button>
+          <button id="segManual" aria-pressed="false" disabled>Thủ công</button>
+        </div>
+      </div>
+      <div class="togs">
+        <button id="btnLed" class="tog" aria-pressed="false" disabled>
+          <span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></span>
+          <span><b>Đèn LED</b><span class="state">Đang tắt</span></span>
+        </button>
+        <button id="btnBuzzer" class="tog" aria-pressed="false" disabled>
+          <span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></span>
+          <span><b>Loa cảnh báo</b><span class="state">Đang tắt</span></span>
+        </button>
+      </div>
+      <p class="hint" id="hint"></p>
+    </article>
+  </section>
+</main>
+
+<script>
+  const PREFIX = "lab3_runner_231432196";         
+  const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  const TEMP_MAX = 35, ALT_JUMP = 5, MAX_POINTS = 60, ARC = 251.3;   // ngưỡng trùng sketch.ino
+  const $ = id => document.getElementById(id);
+  const st = { led:0, buzzer:0, mode:"auto", alt:null, min:Infinity, max:-Infinity, reason:"", lock:0 };
+  const controls = ["segAuto", "segManual", "btnLed", "btnBuzzer"];
+
+  // Plugin vẽ: ánh sáng viền đường biểu đồ và chấm "hiện tại" ở điểm mới nhất
+  const fx = { id:"fx",
+    beforeDatasetDraw(ch, a, o) { if (o.glow && a.index === 0) { ch.ctx.save(); ch.ctx.shadowColor = o.glow; ch.ctx.shadowBlur = 14; } },
+    afterDatasetDraw(ch, a, o) { if (o.glow && a.index === 0) ch.ctx.restore(); },
+    afterDatasetsDraw(ch, a, o) {
+      const p = ch.getDatasetMeta(0).data.slice(-1)[0]; if (!p) return;
+      const c = ch.ctx; c.save(); c.fillStyle = o.dot; c.shadowColor = o.dot; c.shadowBlur = 16;
+      c.beginPath(); c.arc(p.x, p.y, 5.5, 0, 7); c.fill(); c.restore();
+    } };
+
+  function mk(id, o) {
+    const ds = [{ data:[], borderColor:o.line, borderWidth:2.5, tension:.35, pointRadius:0, pointHoverRadius:5, fill:"start",
+      backgroundColor: c => { const a = c.chart.chartArea; if (!a) return o.top;
+        const g = c.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+        g.addColorStop(0, o.top); g.addColorStop(1, o.bottom); return g; } }];
+    if (o.thr) ds.push({ data:[], borderColor:"#e11d48", borderWidth:1.5, borderDash:[6,5], pointRadius:0, fill:false });
+    return new Chart($(id), { type:"line", plugins:[fx], data:{ labels:[], datasets:ds }, options:{
+      responsive:true, maintainAspectRatio:false, animation:false, layout:{ padding:{ top:12, right:12 } },
+      interaction:{ mode:"index", intersect:false },
+      plugins:{ legend:{ display:false }, tooltip:{ filter:i => i.datasetIndex === 0 }, fx:{ glow:o.glow, dot:o.dot } },
+      scales:{ x:{ display:o.xshow, grid:{ display:false }, border:{ display:false }, ticks:{ maxTicksLimit:6, color:"#5b6785" } },
+               y:{ display:o.yshow, grace:"20%", border:{ display:false }, grid:{ color:"#e6eaf3" }, ticks:{ color:"#5b6785" } } } } });
+  }
+  const chartAlt = mk("chartAlt", { line:"#ffe3b3", top:"rgba(10,16,40,.80)", bottom:"rgba(6,10,28,.98)", glow:"#ffb36b", dot:"#ffffff", xshow:false, yshow:false });
+  const chartTemp = mk("chartTemp", { line:"#ef6c35", top:"rgba(239,108,53,.38)", bottom:"rgba(239,108,53,.02)", glow:null, dot:"#ef6c35", thr:true, xshow:true, yshow:true });
+
+  function push(ch, label, vals) {
+    ch.data.labels.push(label);
+    vals.forEach((v, i) => ch.data.datasets[i].data.push(v));
+    if (ch.data.labels.length > MAX_POINTS) { ch.data.labels.shift(); ch.data.datasets.forEach(s => s.data.shift()); }
+    ch.update("none");
+  }
+
+  function paint() {
+    [["led", "btnLed"], ["buzzer", "btnBuzzer"]].forEach(([k, id]) => {
+      const b = $(id), on = !!st[k];
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+      b.querySelector(".state").textContent = on ? "Đang bật" : "Đang tắt";
+    });
+    $("segAuto").setAttribute("aria-pressed", st.mode === "auto");
+    $("segManual").setAttribute("aria-pressed", st.mode !== "auto");
+    $("hint").textContent = st.mode === "auto"
+      ? "Chế độ tự động: LED và loa bật khi nhiệt độ vượt 35°C hoặc độ cao thay đổi đột ngột."
+      : "Chế độ thủ công: bạn tự bật tắt LED và loa. Chọn Tự động để cảnh báo chạy theo cảm biến.";
+  }
+  paint();
+
+  const client = mqtt.connect(BROKER, { reconnectPeriod:3000 });
+  client.on("connect", () => {
+    $("status").textContent = "Đã kết nối broker"; $("status").classList.add("online");
+    controls.forEach(id => $(id).disabled = false);
+    client.subscribe(PREFIX + "/data");
+  });
+  client.on("close", () => {
+    $("status").textContent = "Mất kết nối, đang thử lại…"; $("status").classList.remove("online");
+    controls.forEach(id => $(id).disabled = true);
+  });
+
+  client.on("message", (topic, payload) => {
+    let d; try { d = JSON.parse(payload.toString()); } catch { return; }
+    const t = new Date().toLocaleTimeString("vi-VN");
+    $("wait").hidden = true; $("stats").hidden = false;
+
+    $("alt").textContent = d.alt.toFixed(1);
+    $("press").textContent = d.press.toFixed(1);
+    $("arc").style.strokeDashoffset = (ARC * (1 - Math.min(1, Math.max(0, (d.press - 950) / 100)))) + "px";
+    $("temp").textContent = d.temp.toFixed(1);
+    $("temp").classList.toggle("hot", d.temp > TEMP_MAX);
+    $("last").textContent = "Cập nhật lúc " + t + ".";
+
+    st.min = Math.min(st.min, d.alt); st.max = Math.max(st.max, d.alt);
+    const delta = st.alt === null ? 0 : d.alt - st.alt;
+    $("amin").textContent = st.min.toFixed(1);
+    $("amax").textContent = st.max.toFixed(1);
+    $("adelta").textContent = (delta >= 0 ? "+" : "") + delta.toFixed(1);
+    push(chartAlt, t, [d.alt]);
+    push(chartTemp, t, [d.temp, TEMP_MAX]);
+
+    const why = [];
+    if (d.temp > TEMP_MAX) why.push("nhiệt độ vượt " + TEMP_MAX + "°C");
+    if (Math.abs(delta) > ALT_JUMP) why.push("độ cao thay đổi đột ngột");
+    if (why.length) st.reason = why.join(" và ");
+    st.alt = d.alt;
+
+    const alarm = d.mode === "auto" && (d.led || d.buzzer);
+    $("alarm").hidden = !alarm;
+    document.body.classList.toggle("in-alarm", !!alarm);
+    if (alarm) $("reason").textContent = st.reason || "đang kích hoạt"; else st.reason = "";
+
+    if (Date.now() > st.lock) { st.led = d.led; st.buzzer = d.buzzer; st.mode = d.mode; paint(); }
+  });
+
+  function send(cmd, patch) {
+    client.publish(PREFIX + "/cmd", cmd);
+    Object.assign(st, patch, { lock: Date.now() + 1500 });   // cập nhật ngay, bỏ qua dữ liệu cũ trong 1,5 giây
+    paint();
+  }
+  $("btnLed").onclick    = () => send("led:" + (st.led ? 0 : 1), { led: st.led ? 0 : 1, mode: "manual" });
+  $("btnBuzzer").onclick = () => send("buzzer:" + (st.buzzer ? 0 : 1), { buzzer: st.buzzer ? 0 : 1, mode: "manual" });
+  $("segAuto").onclick   = () => send("mode:auto", { mode: "auto" });
+  $("segManual").onclick = () => send("led:" + st.led, { mode: "manual" });   // giữ nguyên trạng thái, chuyển sang thủ công
+</script>
+</body>
+</html>
